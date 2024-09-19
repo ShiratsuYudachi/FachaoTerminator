@@ -626,6 +626,19 @@ class PenaltyCopyApp:
         # 更新原始图片
         self.original_image = image
 
+        # **新增部分开始**
+        # Resize the updated original_image to display_size to update display_image
+        try:
+            resample_filter = self.get_resampling_filter()
+            self.display_image = self.original_image.resize(self.display_size, resample=resample_filter)
+        except Exception as e:
+            messagebox.showerror("错误", f"调整图像大小时发生错误：{e}")
+            return
+        # **新增部分结束**
+
+        # 更新显示画布
+        self.update_canvas()
+
     def save_image(self):
         save_path = filedialog.asksaveasfilename(defaultextension=".png",
                                                  filetypes=[("PNG Image", "*.png"),
