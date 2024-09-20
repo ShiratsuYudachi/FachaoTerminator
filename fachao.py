@@ -7,7 +7,6 @@ import numpy as np
 import random
 import OCR  # Ensure OCR.py is in the same directory or properly referenced
 
-
 class PenaltyCopyApp:
     def __init__(self, root):
         self.root = root
@@ -53,6 +52,9 @@ class PenaltyCopyApp:
 
         # Setup UI
         self.setup_ui()
+
+        # Load fonts from ./fonts directory
+        self.load_fonts_from_directory()
 
         # Load initial image
         self.load_image_initial()
@@ -179,6 +181,29 @@ class PenaltyCopyApp:
         # Cancel Batch button
         self.cancel_batch_button = tk.Button(self.batch_control_frame, text="取消批量处理", command=self.cancel_batch_processing, state=tk.DISABLED)
         self.cancel_batch_button.pack(anchor='w', pady=2, fill=tk.X)
+
+    def load_fonts_from_directory(self):
+        """Load all font files from the ./fonts directory."""
+        fonts_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fonts")
+        supported_extensions = ('.ttf', '.otf', '.ttc')
+        if not os.path.exists(fonts_dir):
+            messagebox.showwarning("警告", f"字体目录 './fonts' 不存在。请创建目录并添加字体文件。")
+            return
+
+        # List all files in fonts_dir with supported extensions
+        font_files = [os.path.join(fonts_dir, f) for f in os.listdir(fonts_dir)
+                      if f.lower().endswith(supported_extensions)]
+
+        if not font_files:
+            messagebox.showwarning("警告", f"在 './fonts' 目录中未找到任何字体文件。请添加 '.ttf', '.otf' 或 '.ttc' 文件。")
+            return
+
+        # Add font files to selected_fonts and listbox
+        for font_path in font_files:
+            if font_path not in self.selected_fonts:
+                self.selected_fonts.append(font_path)
+                self.font_listbox.insert(tk.END, os.path.basename(font_path))
+        print(f"已自动加载的字体: {self.selected_fonts}")
 
     def update_font_size(self, event=None):
         try:
@@ -987,7 +1012,6 @@ class PenaltyCopyApp:
             return Image.Resampling.LANCZOS  # Pillow >=10
         except AttributeError:
             return Image.LANCZOS  # Pillow <10
-
 
 if __name__ == "__main__":
     root = tk.Tk()
