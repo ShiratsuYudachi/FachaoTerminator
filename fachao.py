@@ -50,6 +50,11 @@ class PenaltyCopyApp:
         # Flag to indicate if batch processing is active
         self.batch_active = False
 
+        # Operation mode for moving boxes: 'source', 'destination', 'all'
+        self.operation_modes = ['源区域', '目标区域', '全部区域']
+        self.current_mode_index = 0  # Start with '源区域'
+        self.current_mode = self.operation_modes[self.current_mode_index]
+
         # Setup UI
         self.setup_ui()
 
@@ -60,6 +65,15 @@ class PenaltyCopyApp:
         self.load_image_initial()
 
         self.debug_image = None  # Store debug image
+
+        # Bind arrow keys for moving boxes
+        self.root.bind("<Up>", self.on_arrow_key)
+        self.root.bind("<Down>", self.on_arrow_key)
+        self.root.bind("<Left>", self.on_arrow_key)
+        self.root.bind("<Right>", self.on_arrow_key)
+
+        # Ensure the root window has focus to capture key events
+        self.root.focus_set()
 
     def setup_ui(self):
         # Left-side canvas to display image
@@ -181,6 +195,10 @@ class PenaltyCopyApp:
         # Cancel Batch button
         self.cancel_batch_button = tk.Button(self.batch_control_frame, text="取消批量处理", command=self.cancel_batch_processing, state=tk.DISABLED)
         self.cancel_batch_button.pack(anchor='w', pady=2, fill=tk.X)
+
+        # **New Toggle Operation Target Button**
+        self.toggle_mode_button = tk.Button(self.control_frame, text=f"操作目标: {self.current_mode}", command=self.toggle_operation_mode)
+        self.toggle_mode_button.pack(anchor='w', pady=(20, 0))
 
     def load_fonts_from_directory(self):
         """Load all font files from the ./fonts directory."""
@@ -1012,6 +1030,64 @@ class PenaltyCopyApp:
             return Image.Resampling.LANCZOS  # Pillow >=10
         except AttributeError:
             return Image.LANCZOS  # Pillow <10
+
+    def toggle_operation_mode(self):
+        # Cycle through the operation modes
+        self.current_mode_index = (self.current_mode_index + 1) % len(self.operation_modes)
+        self.current_mode = self.operation_modes[self.current_mode_index]
+        self.toggle_mode_button.config(text=f"操作目标: {self.current_mode}")
+        print(f"切换操作模式为: {self.current_mode}")
+
+    def on_arrow_key(self, event):
+        # Define movement step in pixels
+        move_step = 10  # Pixels
+
+        # Calculate movement in ratio
+        move_ratio_x = move_step / self.display_size[0]
+        move_ratio_y = move_step / self.display_size[1]
+
+        # Determine direction
+        dx = dy = 0
+        if event.keysym == 'Up':
+            dy = -move_ratio_y
+        elif event.keysym == 'Down':
+            dy = move_ratio_y
+        elif event.keysym == 'Left':
+            dx = -move_ratio_x
+        elif event.keysym == 'Right':
+            dx = move_ratio_x
+
+        if dx == 0 and dy == 0:
+            return  # No movement
+
+        # Determine which regions to move based on current mode
+        for pair in self.region_pairs:
+            # Move source regions if mode is '源区域' or '全部区域'
+            if self.current_mode in ['源区域', '全部区域'] and pair['source']:
+                new_source = [
+                    min(max(pair['source'][0] + dx, 0), 1),
+                    min(max(pair['source'][1] + dy, 0), 1),
+                    min(max(pair['source'][2] + dx, 0), 1),
+                    min(max(pair['source'][3] + dy, 0), 1)
+                ]
+                pair['source'] = new_source
+
+            # Move destination regions if mode is '目标区域' or '全部区域'
+            if self.current_mode in ['目标区域', '全部区域']:
+                new_destinations = []
+                for dst in pair['destinations']:
+                    new_dst = [
+                        min(max(dst[0] + dx, 0), 1),
+                        min(max(dst[1] + dy, 0), 1),
+                        min(max(dst[2] + dx, 0), 1),
+                        min(max(dst[3] + dy, 0), 1)
+                    ]
+                    new_destinations.append(new_dst)
+                pair['destinations'] = new_destinations
+
+        # Update display
+        self.update_canvas()
+        print(f"已向{'上' if dy < 0 else '下' if dy > 0 else ''}{'左' if dx < 0 else '右' if dx > 0 else ''}移动所有选中框 {move_step} 像素。")
 
 if __name__ == "__main__":
     root = tk.Tk()
