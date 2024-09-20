@@ -32,7 +32,7 @@ def getTextFromImage_EasyOCR(image, language):
     result = reader.readtext(img, detail=0, paragraph=True)
 
     # 将结果合并为一个字符串
-    ocr_text = ' '.join(result).strip()
+    ocr_text = ' '.join(result[::-1]).strip()
 
     return ocr_text
 

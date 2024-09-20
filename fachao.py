@@ -192,6 +192,10 @@ class PenaltyCopyApp:
         self.reject_button = tk.Button(self.batch_control_frame, text="拒绝并跳过", command=self.reject_batch_image, state=tk.DISABLED, bg="red", fg="white")
         self.reject_button.pack(anchor='w', pady=2, fill=tk.X)
 
+        # **New "Regenerate Current Image" Button**
+        self.regenerate_button = tk.Button(self.batch_control_frame, text="重新生成当前图片", command=self.regenerate_current_batch_image, state=tk.DISABLED)
+        self.regenerate_button.pack(anchor='w', pady=2, fill=tk.X)
+
         # Cancel Batch button
         self.cancel_batch_button = tk.Button(self.batch_control_frame, text="取消批量处理", command=self.cancel_batch_processing, state=tk.DISABLED)
         self.cancel_batch_button.pack(anchor='w', pady=2, fill=tk.X)
@@ -259,8 +263,6 @@ class PenaltyCopyApp:
     def load_image_initial(self):
         # Clear previous selections
         self.region_pairs = []
-        self.undo_stack = []
-
         # Select image file
         self.image_path = filedialog.askopenfilename(title="请选择一张图片",
                                                      filetypes=[("Image Files", "*.png;*.jpg;*.jpeg;*.bmp")])
@@ -666,20 +668,20 @@ class PenaltyCopyApp:
                         char_width, char_height = (10, 10)  # Fallback size
 
                     # Apply 0.05 random variation
-                    size_variation = np.random.uniform(0.95, 1.05)
+                    size_variation = np.random.uniform(1, 1)
                     char_width = int(char_width * size_variation)
                     char_height = int(char_height * size_variation)
 
                     max_text_height = max(max_text_height, char_height)
 
                     # Add random offset
-                    max_offset_x = box_width * 0.7
-                    max_offset_y = box_height * 0.025
+                    max_offset_x = box_width * 0
+                    max_offset_y = box_height * 0
                     random_offset_x = np.random.uniform(-max_offset_x / 2, max_offset_x / 2)
                     random_offset_y = np.random.uniform(-max_offset_y, max_offset_y)
 
                     # Calculate character position
-                    current_x = dst_box[0] + (box_width - total_width) / 2 + random_offset_x - char_width / 2
+                    current_x = dst_box[0] + (box_width - total_width) / 2 + random_offset_x - char_width / 2 + ocr_text.index(char) * (2*char_width)
                     current_y = dst_box[1] + (box_height - max_text_height) / 2 + random_offset_y
 
                     # Draw character with adjusted size
@@ -787,6 +789,7 @@ class PenaltyCopyApp:
         # Show Accept and Reject buttons
         self.accept_button.config(state=tk.NORMAL)
         self.reject_button.config(state=tk.NORMAL)
+        self.regenerate_button.config(state=tk.NORMAL)  # Enable regenerate button
 
         # Start processing the first image
         self.process_next_batch_image()
@@ -884,20 +887,20 @@ class PenaltyCopyApp:
                             char_width, char_height = (10, 10)  # Fallback size
 
                         # Apply 0.05 random variation
-                        size_variation = np.random.uniform(0.95, 1.05)
+                        size_variation = np.random.uniform(1, 1)
                         char_width = int(char_width * size_variation)
                         char_height = int(char_height * size_variation)
 
                         max_text_height = max(max_text_height, char_height)
 
                         # Add random offset
-                        max_offset_x = box_width * 0.7
-                        max_offset_y = box_height * 0.025
+                        max_offset_x = box_width * 0
+                        max_offset_y = box_height * 0
                         random_offset_x = np.random.uniform(-max_offset_x / 2, max_offset_x / 2)
                         random_offset_y = np.random.uniform(-max_offset_y, max_offset_y)
 
                         # Calculate character position
-                        current_x = dst_box[0] + (box_width - total_width) / 2 + random_offset_x - char_width / 2
+                        current_x = dst_box[0] + (box_width - total_width) / 2 + random_offset_x - char_width / 2 + ocr_text.index(char) * (2*char_width)
                         current_y = dst_box[1] + (box_height - max_text_height) / 2 + random_offset_y
 
                         # Draw character with adjusted size
@@ -1010,6 +1013,7 @@ class PenaltyCopyApp:
         # Hide Accept and Reject buttons
         self.accept_button.config(state=tk.DISABLED)
         self.reject_button.config(state=tk.DISABLED)
+        self.regenerate_button.config(state=tk.DISABLED)
 
         # Reload the original image to display
         self.load_image(self.image_path)
@@ -1088,6 +1092,129 @@ class PenaltyCopyApp:
         # Update display
         self.update_canvas()
         print(f"已向{'上' if dy < 0 else '下' if dy > 0 else ''}{'左' if dx < 0 else '右' if dx > 0 else ''}移动所有选中框 {move_step} 像素。")
+
+    def regenerate_current_batch_image(self):
+        if not self.batch_active:
+            return
+
+        # Reset the temp image to the original
+        self.batch_temp_image = self.batch_original_image.copy()
+
+        # Reprocess the current image with the updated region_pairs
+        try:
+            image = self.batch_temp_image
+            img_width, img_height = image.size
+            draw = ImageDraw.Draw(image)
+
+            language = self.selected_language.get()
+
+            for index, pair in enumerate(self.region_pairs, start=1):
+                src = pair['source']  # [x1_ratio, y1_ratio, x2_ratio, y2_ratio]
+                destinations = pair.get('destinations', [])
+
+                src_box = (
+                    int(src[0] * img_width),
+                    int(src[1] * img_height),
+                    int(src[2] * img_width),
+                    int(src[3] * img_height)
+                )
+                src_region = image.crop(src_box)
+
+                # Perform OCR
+                try:
+                    ocr_text = OCR.getTextFromImage(src_region, language)
+                except Exception as e:
+                    print(f"执行OCR时发生错误：{e}")
+                    ocr_text = ""
+
+                print(f"图片 '{os.path.basename(self.batch_image_paths[self.batch_current_index])}' 区域 {index} OCR 结果: {ocr_text}")
+
+                if not ocr_text:
+                    print(f"警告: 图片 '{os.path.basename(self.batch_image_paths[self.batch_current_index])}' 区域 {index} 未识别到任何文本。")
+                    continue
+
+                # Get text properties
+                font_color = self.color_entry.get()
+
+                # Add OCR text to all destination regions
+                for dst_index, dst in enumerate(destinations, start=1):
+                    dst_box = (
+                        int(dst[0] * img_width),
+                        int(dst[1] * img_height),
+                        int(dst[2] * img_width),
+                        int(dst[3] * img_height)
+                    )
+                    box_width = dst_box[2] - dst_box[0]
+                    box_height = dst_box[3] - dst_box[1]
+
+                    # Calculate starting position
+                    text_x = dst_box[0]
+                    text_y = dst_box[1]
+
+                    # Draw text character by character with random font and slight variations
+                    last_font = None
+                    total_width = 0
+                    max_text_height = 0
+                    for char in ocr_text:
+                        # Choose a different font than the last one
+                        available_fonts = [f for f in self.selected_fonts if f != last_font]
+                        if not available_fonts:
+                            available_fonts = self.selected_fonts  # Allow repetition if all fonts used
+                        font_path = random.choice(available_fonts)
+                        last_font = font_path
+
+                        # Load font if not already loaded
+                        if font_path not in self.loaded_fonts:
+                            try:
+                                pil_font = ImageFont.truetype(font_path, self.font_size)
+                                self.loaded_fonts[font_path] = pil_font
+                            except Exception as e:
+                                print(f"无法加载字体 {font_path}：{e}")
+                                pil_font = ImageFont.load_default()
+                                self.loaded_fonts[font_path] = pil_font
+                        else:
+                            pil_font = self.loaded_fonts[font_path]
+
+                        # Get character size and apply slight random variation
+                        try:
+                            char_width, char_height = pil_font.getsize(char)
+                        except:
+                            char_width, char_height = (10, 10)  # Fallback size
+
+                        # Apply 0.05 random variation
+                        size_variation = np.random.uniform(1, 1)
+                        char_width = int(char_width * size_variation)
+                        char_height = int(char_height * size_variation)
+
+                        max_text_height = max(max_text_height, char_height)
+
+                        # Add random offset
+                        max_offset_x = box_width * 0
+                        max_offset_y = box_height * 0
+                        random_offset_x = np.random.uniform(-max_offset_x / 2, max_offset_x / 2)
+                        random_offset_y = np.random.uniform(-max_offset_y, max_offset_y)
+
+                        # Calculate character position
+                        current_x = dst_box[0] + (box_width - total_width) / 2 + random_offset_x - char_width / 2 + ocr_text.index(char) * (2*char_width)
+                        current_y = dst_box[1] + (box_height - max_text_height) / 2 + random_offset_y
+
+                        # Draw character with adjusted size
+                        try:
+                            font_with_size = pil_font.font_variant(size=int(self.font_size * size_variation))
+                            draw.text((current_x + total_width, current_y), char, font=font_with_size, fill=font_color)
+                        except Exception as e:
+                            print(f"绘制字符时发生错误：{e}")
+
+                        # Update total width
+                        total_width += char_width
+
+                    print(f"文本已添加到图片 '{os.path.basename(self.batch_image_paths[self.batch_current_index])}' 区域 {index}-{dst_index}")
+
+            # Update the display with the modified image
+            self.display_batch_preview()
+
+        except Exception as e:
+            print(f"重新生成图片时发生错误：{e}")
 
 if __name__ == "__main__":
     root = tk.Tk()
